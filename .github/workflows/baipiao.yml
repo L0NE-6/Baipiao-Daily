@@ -1,0 +1,112 @@
+name: Baipiao Daily
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    # 08:07 Beijing time (UTC+8). GitHub cron uses UTC.
+    - cron: "7 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baipiao-daily
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: Asia/Shanghai
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt "ruff>=0.6,<1"
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile Python files
+        run: python -m compileall -q .
+      - name: Ruff check
+        run: python -m ruff check baipiao_daily.py tests
+
+  claim:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Shanghai
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Check credentials
+        id: credentials
+        shell: bash
+        env:
+          BAIPIAO_ACCOUNTS: ${{ secrets.BAIPIAO_ACCOUNTS }}
+          BAIPIAO_SESSION: ${{ secrets.BAIPIAO_SESSION }}
+        run: |
+          if [ -n "${BAIPIAO_ACCOUNTS:-}" ] || [ -n "${BAIPIAO_SESSION:-}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Baipiao Daily::Credentials detected."
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Baipiao Daily::No credentials configured; scheduled claim skipped."
+          fi
+      - name: Run Baipiao
+        if: steps.credentials.outputs.available == 'true'
+        env:
+          BAIPIAO_ACCOUNTS: ${{ secrets.BAIPIAO_ACCOUNTS }}
+          BAIPIAO_SESSION: ${{ secrets.BAIPIAO_SESSION }}
+          BAIPIAO_BASE_URL: ${{ vars.BAIPIAO_BASE_URL }}
+        shell: bash
+        run: |
+          set -o pipefail
+          python baipiao_daily.py | tee baipiao-report.jsonl
+      - name: Build JSON report
+        if: always() && steps.credentials.outputs.available == 'true'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw_path = Path("baipiao-report.jsonl")
+          output_path = Path("baipiao-report.json")
+          records = []
+          if raw_path.exists():
+              for line in raw_path.read_text(encoding="utf-8").splitlines():
+                  if line.strip():
+                      records.append(json.loads(line))
+          output_path.write_text(
+              json.dumps(records, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Upload JSON report
+        if: always() && steps.credentials.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: baipiao-report-${{ github.run_id }}
+          path: |
+            baipiao-report.json
+            baipiao-report.jsonl
+          if-no-files-found: warn
+          retention-days: 30
