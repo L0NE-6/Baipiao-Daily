@@ -1,6 +1,7 @@
 # Baipiao Daily
 
 [简体中文](../README.md) · [English](README.en.md) · **繁體中文** · [日本語](README.ja.md) · [한국어](README.ko.md) · [Português (BR)](README.pt-BR.md)
+> 版本：**v1.0.0**（2026-11-24）
 
 Baipiao 每日簽到，支援多帳號隔離、簽到前後狀態回讀與 JSONL 輸出。
 

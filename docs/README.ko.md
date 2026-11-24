@@ -1,6 +1,7 @@
 # Baipiao Daily
 
 [简体中文](../README.md) · [English](README.en.md) · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md) · **한국어** · [Português (BR)](README.pt-BR.md)
+> 버전: **v1.0.0** (2026-11-24)
 
 Baipiao 일일 체크인을 여러 계정으로 실행하고, 체크인 전후 상태를 다시 읽어
 확인합니다.
